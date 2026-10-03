@@ -24,6 +24,6 @@ import XCTest
     add(image)
     app.buttons["Page actions"].tap()
     app.buttons["Export notebook copy"].tap()
-    XCTAssertTrue(app.buttons["Export"].waitForExistence(timeout: 20), app.debugDescription)
+    XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 20), app.debugDescription)
   }
 }

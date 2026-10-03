@@ -85,7 +85,9 @@ struct NotebookView: View {
           description: Text("Your drawings, images, and notes stay in this notebook document."))
       }
     }
-    .task { if selection == nil { selection = document.pages.first?.id } }
+    .onChange(of: document.pages.map(\.id), initial: true) { _, ids in
+      if selection.map({ !ids.contains($0) }) ?? true { selection = ids.first }
+    }
     .onDisappear {
       recognitionGeneration = UUID()
       recognitionTask?.cancel()
