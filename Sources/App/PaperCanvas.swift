@@ -37,14 +37,18 @@ import SwiftUI
       super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("Use init(markup:)") }
-    private var fitted = false
+    private var fittedSize = CGSize.zero
     override func viewDidLayout() {
       super.viewDidLayout()
-      guard !fitted, canvas.view.bounds.width > 100, canvas.view.bounds.height > 100,
+      let size = canvas.view.bounds.size
+      guard size != fittedSize, size.width > 100, size.height > 100,
         let bounds = canvas.markup?.bounds
       else { return }
+      canvas.zoomRange = 0.1...4
+      canvas.scrollConfiguration.zoomScale = max(
+        0.1, min((size.width - 32) / bounds.width, (size.height - 32) / bounds.height))
       canvas.setContentVisibleFrame(bounds, animated: false)
-      fitted = true
+      fittedSize = size
     }
     override func loadView() {
       view = NSView()
@@ -57,6 +61,7 @@ import SwiftUI
         view.addSubview(child)
       }
       NSLayoutConstraint.activate([
+        tools.view.heightAnchor.constraint(equalToConstant: 52),
         tools.view.topAnchor.constraint(equalTo: view.topAnchor),
         tools.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
         tools.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
