@@ -2,6 +2,16 @@
 
 Editable sketch notebooks for iPad and Mac, built with PaperKit, PencilKit, and SwiftUI's document APIs.
 
+## Preview
+
+Mac workspace with a saved notebook and page inspector:
+
+![Mac notebook workspace](Docs/Mac.png)
+
+iPad creation and shape-editing workflow:
+
+![iPad notebook canvas](Docs/iPad.png)
+
 ## Use it
 
 Create a notebook, add pages, then draw or insert text, shapes, and images. Page details holds the title, notes, and recognised handwriting. Search finds titles, notes, and the last recognition result. Changes participate in document autosave and Undo.
