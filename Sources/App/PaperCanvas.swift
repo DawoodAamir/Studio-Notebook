@@ -87,13 +87,17 @@ import SwiftUI
     func makeCoordinator() -> Coordinator { Coordinator(markup: $markup, controllers: controllers) }
     func makeNSViewController(context: Context) -> PaperMarkupViewController {
       controllers.canvas.delegate = context.coordinator
+      context.coordinator.lastNative = controllers.canvas.markup
       return controllers.canvas
     }
     func updateNSViewController(_ controller: PaperMarkupViewController, context: Context) {
       context.coordinator.binding = $markup
-      if controller.markup != markup {
+      // PaperKit merges revision metadata; compare the last model input to avoid feedback.
+      if context.coordinator.lastInput != markup {
+        context.coordinator.lastInput = markup
         context.coordinator.updating = true
         controller.markup = markup
+        context.coordinator.lastNative = controller.markup
         context.coordinator.updating = false
       }
     }
@@ -106,9 +110,12 @@ import SwiftUI
     @MainActor final class Coordinator: NSObject, @MainActor PaperMarkupViewController.Delegate {
       var binding: Binding<PaperMarkup>
       var updating = false
+      var lastInput: PaperMarkup
+      var lastNative: PaperMarkup?
       let controllers: MacCanvasControllers
       init(markup: Binding<PaperMarkup>, controllers: MacCanvasControllers) {
         binding = markup
+        lastInput = markup.wrappedValue
         self.controllers = controllers
       }
       func paperMarkupViewControllerDidChangeContentVisibleFrame(
@@ -119,7 +126,10 @@ import SwiftUI
         }
       }
       func paperMarkupViewControllerDidChangeMarkup(_ controller: PaperMarkupViewController) {
-        if !updating, let markup = controller.markup { binding.wrappedValue = markup }
+        guard !updating, let markup = controller.markup, markup != lastNative else { return }
+        lastNative = markup
+        lastInput = markup
+        binding.wrappedValue = markup
       }
     }
   }
@@ -131,6 +141,7 @@ import SwiftUI
     func makeUIViewController(context: Context) -> PaperMarkupViewController {
       let canvas = PaperMarkupViewController(markup: markup, supportedFeatureSet: .latest)
       canvas.delegate = context.coordinator
+      context.coordinator.lastNative = canvas.markup
       canvas.directTouchMode = .drawing
       canvas.indirectPointerTouchMode = .selection
       context.coordinator.canvas = canvas
@@ -142,9 +153,12 @@ import SwiftUI
     }
     func updateUIViewController(_ canvas: PaperMarkupViewController, context: Context) {
       context.coordinator.binding = $markup
-      if canvas.markup != markup {
+      // PaperKit merges revision metadata; compare the last model input to avoid feedback.
+      if context.coordinator.lastInput != markup {
+        context.coordinator.lastInput = markup
         context.coordinator.updating = true
         canvas.markup = markup
+        context.coordinator.lastNative = canvas.markup
         context.coordinator.updating = false
       }
     }
@@ -154,11 +168,19 @@ import SwiftUI
     {
       var binding: Binding<PaperMarkup>
       var updating = false
+      var lastInput: PaperMarkup
+      var lastNative: PaperMarkup?
       let picker = PKToolPicker()
       weak var canvas: PaperMarkupViewController?
-      init(markup: Binding<PaperMarkup>) { binding = markup }
+      init(markup: Binding<PaperMarkup>) {
+        binding = markup
+        lastInput = markup.wrappedValue
+      }
       func paperMarkupViewControllerDidChangeMarkup(_ controller: PaperMarkupViewController) {
-        if !updating, let markup = controller.markup { binding.wrappedValue = markup }
+        guard !updating, let markup = controller.markup, markup != lastNative else { return }
+        lastNative = markup
+        lastInput = markup
+        binding.wrappedValue = markup
       }
       func toolPickerSelectedToolItemDidChange(_ toolPicker: PKToolPicker) {
         canvas?.toolPickerSelectedToolItemDidChange(toolPicker)
