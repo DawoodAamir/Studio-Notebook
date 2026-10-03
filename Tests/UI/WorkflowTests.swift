@@ -18,6 +18,7 @@ import XCTest
     app.buttons["Insert"].tap()
     app.buttons["Rectangle"].tap()
     XCTAssertTrue(app.textFields["page-title"].value as? String == "Review sketches")
+    app.buttons["Page details"].tap()
     let image = XCTAttachment(screenshot: app.screenshot())
     image.name = "Notebook canvas"
     image.lifetime = .keepAlways

@@ -51,34 +51,37 @@ struct NotebookView: View {
         }
     } detail: {
       if let index {
-        PaperCanvas(markup: markupBinding(for: document.pages[index].id))
-          .id(document.pages[index].id)
-          .navigationTitle(document.pages[index].title)
-          .toolbar {
-            Menu("Insert", systemImage: "plus.square") {
-              Button("Text box") { insertText(index) }
-              Button("Rectangle") { insertShape(index, .roundedRectangle) }
-              Button("Ellipse") { insertShape(index, .ellipse) }
-              Button("Image") { importing = true }
-            }
-            Button("Page details", systemImage: "sidebar.right") { inspector.toggle() }
-            Menu("Page actions", systemImage: "ellipsis.circle") {
-              Button("Duplicate page") {
-                var page = document.pages[index]
-                page.id = UUID()
-                page.title += " copy"
-                edit("Duplicate page") { $0.append(page) }
-                selection = page.id
-              }.disabled(document.pages.count >= 100)
-              Button("Export notebook PDF") { startExport(as: .pdf) }
-              Button("Export notebook copy") { startExport(as: .studioNotebook) }
-              Button("Delete page", role: .destructive) { deleting = true }.disabled(
-                document.pages.count == 1)
-            }
+        GeometryReader { geometry in
+          PaperCanvas(markup: markupBinding(for: document.pages[index].id))
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+        .id(document.pages[index].id)
+        .navigationTitle(document.pages[index].title)
+        .toolbar {
+          Menu("Insert", systemImage: "plus.square") {
+            Button("Text box") { insertText(index) }
+            Button("Rectangle") { insertShape(index, .roundedRectangle) }
+            Button("Ellipse") { insertShape(index, .ellipse) }
+            Button("Image") { importing = true }
           }
-          .inspector(isPresented: $inspector) {
-            details(index).inspectorColumnWidth(min: 240, ideal: 300, max: 400)
+          Button("Page details", systemImage: "sidebar.right") { inspector.toggle() }
+          Menu("Page actions", systemImage: "ellipsis.circle") {
+            Button("Duplicate page") {
+              var page = document.pages[index]
+              page.id = UUID()
+              page.title += " copy"
+              edit("Duplicate page") { $0.append(page) }
+              selection = page.id
+            }.disabled(document.pages.count >= 100)
+            Button("Export notebook PDF") { startExport(as: .pdf) }
+            Button("Export notebook copy") { startExport(as: .studioNotebook) }
+            Button("Delete page", role: .destructive) { deleting = true }.disabled(
+              document.pages.count == 1)
           }
+        }
+        .inspector(isPresented: $inspector) {
+          details(index).inspectorColumnWidth(min: 240, ideal: 300, max: 400)
+        }
       } else {
         ContentUnavailableView(
           "Choose a page", systemImage: "book.closed",

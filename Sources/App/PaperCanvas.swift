@@ -4,72 +4,123 @@ import SwiftUI
 
 #if os(macOS)
   import AppKit
-  struct PaperCanvas: NSViewControllerRepresentable {
+
+  struct PaperCanvas: View {
     @Binding var markup: PaperMarkup
-    func makeCoordinator() -> Coordinator { Coordinator(markup: $markup) }
-    func makeNSViewController(context: Context) -> CanvasController {
-      let controller = CanvasController(markup: markup)
-      controller.canvas.delegate = context.coordinator
-      return controller
+    @State private var controllers: MacCanvasControllers?
+
+    var body: some View {
+      Group {
+        if let controllers {
+          VStack(spacing: 0) {
+            MacMarkupTools(controllers: controllers)
+              .frame(height: 52)
+            MacMarkupSurface(markup: $markup, controllers: controllers)
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
+              .onGeometryChange(for: CGSize.self) {
+                $0.size
+              } action: { size in
+                controllers.scheduleFit(size: size)
+              }
+          }
+        } else {
+          ProgressView("Opening canvas")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+      }
+      .task {
+        if controllers == nil { controllers = MacCanvasControllers(markup: markup) }
+      }
+      .onDisappear { controllers?.fitTask?.cancel() }
     }
-    func updateNSViewController(_ controller: CanvasController, context: Context) {
+  }
+
+  @MainActor private final class MacCanvasControllers {
+    let canvas: PaperMarkupViewController
+    let tools = MarkupToolbarViewController(supportedFeatureSet: .latest)
+    var fitTask: Task<Void, Never>?
+    var needsFit = false
+
+    init(markup: PaperMarkup) {
+      canvas = PaperMarkupViewController(markup: markup, supportedFeatureSet: .latest)
+      let page = NSView(frame: markup.bounds)
+      page.wantsLayer = true
+      page.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+      canvas.contentView = page
+      tools.delegate = canvas
+      tools.selectedIndirectPointerTouchMode = .selection
+      canvas.zoomRange = 0.1...4
+    }
+
+    func scheduleFit(size: CGSize) {
+      needsFit = true
+      fitTask?.cancel()
+      fitTask = Task { [weak self] in
+        await Task.yield()
+        guard !Task.isCancelled, let self, size.width > 100, size.height > 100,
+          let bounds = canvas.markup?.bounds
+        else { return }
+        guard !canvas.contentVisibleFrame.isEmpty else { return }
+        needsFit = false
+        canvas.scrollConfiguration.zoomScale = max(
+          0.1, min((size.width - 32) / bounds.width, (size.height - 32) / bounds.height))
+        canvas.contentVisibleFrame = bounds.insetBy(dx: -24, dy: -24)
+      }
+    }
+  }
+
+  private struct MacMarkupTools: NSViewControllerRepresentable {
+    let controllers: MacCanvasControllers
+    func makeNSViewController(context: Context) -> MarkupToolbarViewController { controllers.tools }
+    func updateNSViewController(_ controller: MarkupToolbarViewController, context: Context) {}
+    func sizeThatFits(
+      _ proposal: ProposedViewSize, nsViewController: MarkupToolbarViewController,
+      context: Context
+    ) -> CGSize? {
+      CGSize(width: proposal.width ?? 640, height: 52)
+    }
+  }
+
+  private struct MacMarkupSurface: NSViewControllerRepresentable {
+    @Binding var markup: PaperMarkup
+    let controllers: MacCanvasControllers
+    func makeCoordinator() -> Coordinator { Coordinator(markup: $markup, controllers: controllers) }
+    func makeNSViewController(context: Context) -> PaperMarkupViewController {
+      controllers.canvas.delegate = context.coordinator
+      return controllers.canvas
+    }
+    func updateNSViewController(_ controller: PaperMarkupViewController, context: Context) {
       context.coordinator.binding = $markup
-      if controller.canvas.markup != markup {
+      if controller.markup != markup {
         context.coordinator.updating = true
-        controller.canvas.markup = markup
+        controller.markup = markup
         context.coordinator.updating = false
       }
+    }
+    func sizeThatFits(
+      _ proposal: ProposedViewSize, nsViewController: PaperMarkupViewController,
+      context: Context
+    ) -> CGSize? {
+      CGSize(width: proposal.width ?? 640, height: proposal.height ?? 700)
     }
     @MainActor final class Coordinator: NSObject, @MainActor PaperMarkupViewController.Delegate {
       var binding: Binding<PaperMarkup>
       var updating = false
-      init(markup: Binding<PaperMarkup>) { binding = markup }
+      let controllers: MacCanvasControllers
+      init(markup: Binding<PaperMarkup>, controllers: MacCanvasControllers) {
+        binding = markup
+        self.controllers = controllers
+      }
+      func paperMarkupViewControllerDidChangeContentVisibleFrame(
+        _ controller: PaperMarkupViewController
+      ) {
+        if controllers.needsFit, !controller.contentVisibleFrame.isEmpty {
+          controllers.scheduleFit(size: controller.view.bounds.size)
+        }
+      }
       func paperMarkupViewControllerDidChangeMarkup(_ controller: PaperMarkupViewController) {
         if !updating, let markup = controller.markup { binding.wrappedValue = markup }
       }
-    }
-  }
-  @MainActor final class CanvasController: NSViewController {
-    let canvas: PaperMarkupViewController
-    private let tools = MarkupToolbarViewController(supportedFeatureSet: .latest)
-    init(markup: PaperMarkup) {
-      canvas = PaperMarkupViewController(markup: markup, supportedFeatureSet: .latest)
-      super.init(nibName: nil, bundle: nil)
-    }
-    required init?(coder: NSCoder) { fatalError("Use init(markup:)") }
-    private var fittedSize = CGSize.zero
-    override func viewDidLayout() {
-      super.viewDidLayout()
-      let size = canvas.view.bounds.size
-      guard size != fittedSize, size.width > 100, size.height > 100,
-        let bounds = canvas.markup?.bounds
-      else { return }
-      canvas.zoomRange = 0.1...4
-      canvas.scrollConfiguration.zoomScale = max(
-        0.1, min((size.width - 32) / bounds.width, (size.height - 32) / bounds.height))
-      canvas.setContentVisibleFrame(bounds, animated: false)
-      fittedSize = size
-    }
-    override func loadView() {
-      view = NSView()
-      addChild(canvas)
-      addChild(tools)
-      tools.delegate = canvas
-      tools.selectedIndirectPointerTouchMode = .selection
-      for child in [tools.view, canvas.view] {
-        child.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(child)
-      }
-      NSLayoutConstraint.activate([
-        tools.view.heightAnchor.constraint(equalToConstant: 52),
-        tools.view.topAnchor.constraint(equalTo: view.topAnchor),
-        tools.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        tools.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        canvas.view.topAnchor.constraint(equalTo: tools.view.bottomAnchor),
-        canvas.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-        canvas.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        canvas.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-      ])
     }
   }
 #else
